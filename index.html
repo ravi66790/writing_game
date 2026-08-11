@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>✨ Spelling Adventure ✨</title>
+
+<!-- ===== PWA: makes this installable like a real app ===== -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#9b5de5" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Spelling" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" href="icon-192.png" />
+
+<!-- Playful rounded font for a kid-friendly feel -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+
+<!-- Tesseract.js: the client-side OCR engine that reads the child's handwriting.
+     Loaded from a CDN so this file needs no backend/server at all. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+
+<style>
+  /* ============================================================
+     THEME / DESIGN TOKENS
+     ============================================================ */
+  :root{
+    --sky:#63c7ff;
+    --lavender:#b39ddb;
+    --pink:#ff9fd6;
+    --sun:#ffd93d;
+    --coral:#ff6b6b;
+    --mint:#4fd68a;
+    --grape:#9b5de5;
+    --ink:#3a3358;
+    --card-bg:#fffdf7;
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:12px;
+    --shadow-soft:0 10px 25px rgba(80,50,120,0.18);
+    --shadow-press:0 4px 10px rgba(80,50,120,0.18);
+    font-size:16px;
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    font-family:'Nunito', sans-serif;
+    color:var(--ink);
+    overflow-x:hidden;
+  }
+
+  body{
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255,255,255,0.5), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(255,255,255,0.35), transparent 45%),
+      linear-gradient(160deg, var(--sky) 0%, var(--lavender) 55%, var(--pink) 100%);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 14px 12px 40px;
+    position:relative;
+  }
+
+  /* Decorative floating shapes for a playful background */
+  .floaty{
+    position:fixed; z-index:0; pointer-events:none;
+    border-radius:50%;
+    opacity:0.35;
+    filter:blur(1px);
+    animation: floatUp 9s ease-in-out infinite;
+  }
+  @keyframes floatUp{
+    0%,100%{ transform:translateY(0) rotate(0deg); }
+    50%{ transform:translateY(-22px) rotate(12deg); }
+  }
+
+  h1,h2,h3{ font-family:'Baloo 2', cursive; margin:0; }
+
+  /* ============================================================
+     HEADER
+     ============================================================ */
+  .app-header{
+    width:100%; max-width:640px;
+    display:flex; align-items:center; justify-content:space-between;
+    z-index:2; position:relative;
+    margin-bottom:10px;
+  }
+  .app-title{
+    font-size:1.5rem; font-weight:800; color:#fff;
+    text-shadow:0 3px 0 rgba(80,50,120,0.35);
+    letter-spacing:0.5px;
+  }
+  .header-right{ display:flex; align-items:center; gap:8px; }
+  .star-badge{
+    background:#fff; border-radius:999px; padding:6px 14px;
+    font-family:'Baloo 2', cursive; font-weight:700; font-size:1.05rem;
+    box-shadow:var(--shadow-press);
+    display:flex; align-items:center; gap:6px;
+    color:#7a5b00;
+  }
+  .icon-btn{
+    width:44px; height:44px; border-radius:50%;
+    border:none; background:#fff; box-shadow:var(--shadow-press);
+    font-size:1.3rem; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:transform .12s ease;
+  }
+  .icon-btn:active{ transform:scale(0.9); }
+
+  /* ============================================================
+     CARD / GAME CONTAINER
+     ============================================================ */
+  .card{
+    z-index:2; position:relative;
+    width:100%; max-width:640px;
+    background:var(--card-bg);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-soft);
+    padding:20px 18px 26px;
+    animation: popIn .35s ease;
+  }
+  @keyframes popIn{
+    from{ opacity:0; transform:scale(.92) translateY(10px); }
+    to{ opacity:1; transform:scale(1) translateY(0); }
+  }
+
+  /* progress bar */
+  .progress-wrap{ margin-bottom:14px; }
+  .progress-label{
+    font-weight:800; font-family:'Baloo 2',cursive; font-size:0.95rem;
+    color:var(--grape); margin-bottom:6px; text-align:center;
+  }
+  .progress-track{
+    height:12px; border-radius:999px; background:#eee0ff; overflow:hidden;
+  }
+  .progress-fill{
+    height:100%; border-radius:999px;
+    background:linear-gradient(90deg, var(--mint), var(--sky));
+    transition:width .4s ease;
+  }
+
+  /* hint / word row */
+  .hint-row{
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    margin: 6px 0 16px;
+    flex-wrap:wrap;
+  }
+  .hint-emoji{
+    font-size:3rem; line-height:1;
+    filter:drop-shadow(0 4px 4px rgba(0,0,0,0.15));
+    animation: wiggle 2.4s ease-in-out infinite;
+  }
+  @keyframes wiggle{
+    0%,100%{ transform:rotate(-4deg); } 50%{ transform:rotate(4deg); }
+  }
+  .speak-btn{
+    background:linear-gradient(180deg, var(--sun), #ffb100);
+    border:none; border-radius:999px; padding:12px 22px;
+    font-family:'Baloo 2',cursive; font-weight:700; font-size:1.05rem;
+    color:#5a3d00; cursor:pointer; box-shadow:var(--shadow-press);
+    display:flex; align-items:center; gap:8px;
+    transition:transform .1s ease;
+  }
+  .speak-btn:active{ transform:translateY(3px) scale(0.98); box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+
+  .mode-toggle{
+    background:#f1eaff; border:2px solid #d9c9ff; border-radius:999px;
+    padding:8px 14px; font-family:'Baloo 2', cursive; font-weight:700;
+    color:var(--grape); font-size:0.85rem; cursor:pointer;
+  }
+  .mode-toggle.off{ opacity:0.55; }
+
+  .helper-text{
+    text-align:center; font-size:0.9rem; color:#7a6f9c; margin-bottom:10px; font-weight:600;
+  }
+
+  /* ============================================================
+     LETTER BOXES (handwriting canvases)
+     ============================================================ */
+  #lettersRow{
+    display:flex; flex-wrap:wrap; justify-content:center; gap:10px;
+    margin: 8px 0 18px;
+  }
+  .letter-box-wrap{
+    width:clamp(48px, 13vw, 82px);
+    aspect-ratio: 3 / 4;
+    position:relative;
+    border-radius: var(--radius-sm);
+    background:#fff;
+    border:3px dashed #cbb8ff;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.04);
+    overflow:hidden;
+    transition: border-color .25s ease, background .25s ease, transform .15s ease;
+  }
+  .letter-box-wrap.correct{ border-color:var(--mint); border-style:solid; background:#eafff2; animation: goodPulse .5s ease; }
+  .letter-box-wrap.incorrect{ border-color:var(--coral); border-style:solid; background:#fff0f0; animation: shake .45s ease; }
+  .letter-box-wrap.empty-warn{ border-color:var(--sun); border-style:solid; animation: shake .45s ease; }
+  @keyframes goodPulse{ 0%{transform:scale(1);} 40%{transform:scale(1.12);} 100%{transform:scale(1);} }
+  @keyframes shake{
+    0%,100%{ transform:translateX(0); }
+    20%{ transform:translateX(-6px); }
+    40%{ transform:translateX(6px); }
+    60%{ transform:translateX(-4px); }
+    80%{ transform:translateX(4px); }
+  }
+  .letter-box-wrap canvas{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    touch-action:none; /* prevents scrolling while drawing on touch devices */
+  }
+  .guide-canvas{ z-index:1; }
+  .ink-canvas{ z-index:2; }
+  .letter-status{
+    position:absolute; bottom:2px; right:4px; font-size:1rem; z-index:3;
+    pointer-events:none;
+  }
+
+  /* ============================================================
+     CONTROLS
+     ============================================================ */
+  .controls-row{
+    display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:6px;
+  }
+  .btn{
+    border:none; border-radius:999px; padding:14px 24px;
+    font-family:'Baloo 2', cursive; font-weight:700; font-size:1.05rem;
+    cursor:pointer; box-shadow:var(--shadow-press);
+    transition: transform .1s ease, box-shadow .1s ease, opacity .2s ease;
+    display:flex; align-items:center; gap:8px;
+  }
+  .btn:active{ transform:translateY(3px); box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+  .btn:disabled{ opacity:0.5; cursor:not-allowed; transform:none; }
+  .btn-clear{ background:#fff; color:#8a7bb0; border:2px solid #e0d6ff; }
+  .btn-check{ background:linear-gradient(180deg, var(--mint), #29b872); color:#fff; }
+  .btn-next{ background:linear-gradient(180deg, var(--sky), #2e8fe0); color:#fff; }
+  .btn-reveal{ background:#fff; color:var(--coral); border:2px solid #ffd0d0; font-size:0.9rem; padding:10px 18px;}
+  .btn-skip{ background:#fff; color:#8a7bb0; border:2px solid #e0d6ff; font-size:0.9rem; padding:10px 18px;}
+  .btn-primary-big{
+    background:linear-gradient(180deg, var(--grape), #7b2ff7); color:#fff; font-size:1.2rem; padding:16px 32px;
+  }
+
+  /* ============================================================
+     FEEDBACK BANNER
+     ============================================================ */
+  .feedback{
+    text-align:center; min-height:34px; margin-top:14px;
+    font-family:'Baloo 2', cursive; font-weight:700; font-size:1.15rem;
+  }
+  .feedback.good{ color:#1f9e5e; }
+  .feedback.bad{ color:#e0525a; }
+  .feedback.neutral{ color:#8a7bb0; }
+
+  .reveal-box{
+    text-align:center; margin-top:10px; display:none;
+  }
+  .reveal-word{
+    font-family:'Baloo 2',cursive; font-size:2rem; letter-spacing:6px;
+    color:var(--grape); font-weight:800;
+  }
+
+  /* ============================================================
+     WELCOME / SUMMARY SCREENS
+     ============================================================ */
+  .center-screen{ text-align:center; padding:10px 6px; }
+  .center-screen p{ color:#6a5c8f; font-weight:700; margin: 6px 0 20px; }
+  .big-emoji{ font-size:4rem; margin-bottom:6px; display:block; animation: wiggle 2s ease-in-out infinite; }
+
+  /* ============================================================
+     MODAL (Parent / Teacher Settings)
+     ============================================================ */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(40,20,70,0.55);
+    display:none; align-items:center; justify-content:center; z-index:50;
+    padding:16px;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal{
+    background:#fff; border-radius:var(--radius-lg); width:100%; max-width:520px;
+    max-height:88vh; overflow-y:auto; padding:22px 20px 20px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.35);
+  }
+  .modal h2{ font-size:1.4rem; color:var(--grape); margin-bottom:4px; }
+  .modal-sub{ color:#8a7bb0; font-weight:700; font-size:0.85rem; margin-bottom:16px; }
+  .gate-box input{
+    width:100%; padding:12px; border-radius:var(--radius-sm); border:2px solid #e0d6ff;
+    font-size:1.1rem; text-align:center; font-family:'Baloo 2',cursive; margin:10px 0;
+  }
+  .word-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .word-row input.word-input{ flex:1; padding:9px 10px; border-radius:10px; border:2px solid #e6ddff; font-weight:700; text-transform:uppercase; }
+  .word-row input.emoji-input{ width:52px; padding:9px 6px; border-radius:10px; border:2px solid #e6ddff; text-align:center; }
+  .word-row button.del-btn{ background:#fff0f0; color:var(--coral); border:2px solid #ffd7d7; border-radius:10px; width:36px; height:36px; cursor:pointer; }
+  .settings-section{ margin-top:18px; padding-top:14px; border-top:2px dashed #eee0ff; }
+  .settings-section h3{ font-size:1.05rem; color:var(--ink); margin-bottom:10px; }
+  .setting-line{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; font-weight:700; color:#5a4d78; }
+  select, input[type=range]{ font-family:'Nunito',sans-serif; }
+  select{ padding:8px; border-radius:10px; border:2px solid #e6ddff; }
+  .switch{ position:relative; width:50px; height:28px; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .slider-toggle{
+    position:absolute; cursor:pointer; inset:0; background:#e0d6ff; border-radius:999px; transition:.2s;
+  }
+  .slider-toggle:before{
+    content:""; position:absolute; height:22px; width:22px; left:3px; top:3px;
+    background:white; border-radius:50%; transition:.2s; box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .switch input:checked + .slider-toggle{ background:var(--mint); }
+  .switch input:checked + .slider-toggle:before{ transform:translateX(22px); }
+
+  .modal-actions{ display:flex; gap:10px; margin-top:20px; }
+  .modal-actions .btn{ flex:1; justify-content:center; }
+  .add-word-btn{
+    width:100%; margin-top:6px; padding:10px; border-radius:12px; border:2px dashed #cbb8ff;
+    background:#faf6ff; color:var(--grape); font-weight:800; cursor:pointer; font-family:'Baloo 2',cursive;
+  }
+  .reset-link{
+    display:block; text-align:center; margin-top:10px; color:#a89cc8; font-weight:700; font-size:0.85rem;
+    cursor:pointer; text-decoration:underline;
+  }
+
+  /* confetti canvas overlay */
+  #confettiCanvas{
+    position:fixed; inset:0; pointer-events:none; z-index:60;
+  }
+
+  /* loading banner for OCR engine */
+  .ocr-status{
+    text-align:center; font-size:0.85rem; color:#8a7bb0; font-weight:700; margin-bottom:8px;
+  }
+
+  footer.credit{
+    margin-top:22px; color:rgba(255,255,255,0.85); font-size:0.75rem; font-weight:700; text-align:center; z-index:2;
+  }
+
+  @media (max-width:380px){
+    .app-title{ font-size:1.2rem; }
+    .card{ padding:16px 12px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- decorative floating background circles -->
+<div class="floaty" style="width:90px;height:90px;background:#fff;top:8%;left:6%;animation-delay:0s;"></div>
+<div class="floaty" style="width:60px;height:60px;background:#ffd93d;top:70%;left:10%;animation-delay:1.2s;"></div>
+<div class="floaty" style="width:70px;height:70px;background:#4fd68a;top:15%;right:8%;animation-delay:2s;"></div>
+<div class="floaty" style="width:44px;height:44px;background:#fff;top:80%;right:12%;animation-delay:0.6s;"></div>
+
+<canvas id="confettiCanvas"></canvas>
+
+<div class="app-header">
+  <div class="app-title">✨ Spelling Adventure</div>
+  <div class="header-right">
+    <div class="star-badge">⭐ <span id="starCount">0</span></div>
+    <button class="icon-btn" id="openSettingsBtn" title="Parent / Teacher Settings" aria-label="Settings">⚙️</button>
+  </div>
+</div>
+
+<div class="card" id="mainCard">
+
+  <!-- ---------- WELCOME SCREEN ---------- -->
+  <div id="welcomeScreen" class="center-screen">
+    <span class="big-emoji">🦄</span>
+    <h2>Ready to practice spelling?</h2>
+    <p>Listen to the word, then write each letter with your finger!</p>
+    <div id="ocrStatusWelcome" class="ocr-status">🧠 Waking up the handwriting helper…</div>
+    <button class="btn btn-primary-big" id="startBtn" disabled>▶️ Start Practicing!</button>
+    <div>
+      <button class="btn btn-clear" id="installBtn" style="display:none; margin-top:14px;">📲 Install App on This Device</button>
+      <div id="iosInstallHint" style="display:none; margin-top:14px; font-size:0.8rem; color:#8a7bb0; font-weight:700; max-width:360px; margin-left:auto; margin-right:auto;">
+        On iPhone/iPad: tap the Share icon <span style="font-size:1rem;">⬆️</span> in Safari, then "Add to Home Screen" 🏠
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- GAME SCREEN ---------- -->
+  <div id="gameScreen" style="display:none;">
+    <div class="progress-wrap">
+      <div class="progress-label" id="progressLabel">Word 1 of 10</div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    </div>
+
+    <div class="hint-row">
+      <div class="hint-emoji" id="hintEmoji">❓</div>
+      <button class="speak-btn" id="speakBtn">🔊 Hear Word</button>
+      <button class="mode-toggle" id="guideToggleBtn">👻 Tracing: On</button>
+    </div>
+
+    <div class="helper-text" id="helperText">Trace or write each letter in its box ✍️</div>
+
+    <div id="lettersRow"></div>
+
+    <div class="controls-row">
+      <button class="btn btn-clear" id="clearBtn">🧹 Clear</button>
+      <button class="btn btn-check" id="checkBtn">✅ Check My Spelling</button>
+    </div>
+
+    <div class="feedback neutral" id="feedbackText"></div>
+
+    <div class="reveal-box" id="revealBox">
+      <div class="reveal-word" id="revealWord"></div>
+      <div class="controls-row" style="margin-top:12px;">
+        <button class="btn btn-skip" id="skipBtn">⏭️ Skip This Word</button>
+        <button class="btn btn-reveal" id="tryAgainBtn">🔁 I'll Try Again</button>
+      </div>
+    </div>
+
+    <div class="controls-row" id="nextRow" style="display:none; margin-top:16px;">
+      <button class="btn btn-next" id="nextBtn">👉 Next Word</button>
+    </div>
+  </div>
+
+  <!-- ---------- SUMMARY SCREEN ---------- -->
+  <div id="summaryScreen" class="center-screen" style="display:none;">
+    <span class="big-emoji">🎉</span>
+    <h2 id="summaryTitle">Amazing job!</h2>
+    <p id="summaryText"></p>
+    <button class="btn btn-primary-big" id="playAgainBtn">🔄 Play Again</button>
+  </div>
+
+</div>
+
+<footer class="credit">Made with 💜 for curious spellers</footer>
+
+<!-- ============================================================
+     PARENT / TEACHER SETTINGS MODAL
+     ============================================================ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+
+    <!-- Gate so kids don't easily wander into settings -->
+    <div id="gateSection">
+      <h2>🔒 Grown-ups Only</h2>
+      <div class="modal-sub">Answer the question to open Parent / Teacher Settings</div>
+      <div class="gate-box">
+        <label id="gateQuestion" style="font-weight:800;">What is 4 + 5 ?</label>
+        <input type="number" id="gateAnswer" placeholder="Type the answer" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-clear" id="gateCancelBtn">Cancel</button>
+        <button class="btn btn-check" id="gateUnlockBtn">Unlock</button>
+      </div>
+    </div>
+
+    <!-- Actual settings panel -->
+    <div id="settingsSection" style="display:none;">
+      <h2>⚙️ Parent / Teacher Settings</h2>
+      <div class="modal-sub">Build a custom spelling list &amp; tweak how the game works</div>
+
+      <h3 style="font-family:'Baloo 2',cursive; color:var(--ink); font-size:1.05rem;">📝 Word List</h3>
+      <div id="wordListEditor"></div>
+      <button class="add-word-btn" id="addWordBtn">+ Add a word</button>
+      <span class="reset-link" id="resetWordsLink">Reset to default word list</span>
+
+      <div class="settings-section">
+        <h3>🎮 Game Options</h3>
+
+        <div class="setting-line">
+          <span>🔀 Shuffle word order</span>
+          <label class="switch"><input type="checkbox" id="shuffleToggle"><span class="slider-toggle"></span></label>
+        </div>
+
+        <div class="setting-line">
+          <span>👻 Tracing guides by default</span>
+          <label class="switch"><input type="checkbox" id="guideDefaultToggle"><span class="slider-toggle"></span></label>
+        </div>
+
+        <div class="setting-line">
+          <span>🗣️ Voice</span>
+          <select id="voiceSelect"></select>
+        </div>
+
+        <div class="setting-line">
+          <span>⏱️ Speaking speed</span>
+          <input type="range" id="rateRange" min="0.5" max="1.3" step="0.1" />
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-clear" id="settingsCancelBtn">Cancel</button>
+        <button class="btn btn-check" id="settingsSaveBtn">💾 Save &amp; Close</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   SPELLING ADVENTURE — main application script
+   Everything (HTML/CSS/JS) lives in this single file so it can run
+   in any modern browser with no backend/build step required.
+   ================================================================ */
+(function(){
+  'use strict';
+
+  /* ----------------------------------------------------------
+     1. DEFAULT DATA + PERSISTENCE (localStorage)
+     ---------------------------------------------------------- */
+  const DEFAULT_WORDS = [
+    {word:'CAT',    emoji:'🐱'},
+    {word:'DOG',    emoji:'🐶'},
+    {word:'SUN',    emoji:'☀️'},
+    {word:'MOON',   emoji:'🌙'},
+    {word:'APPLE',  emoji:'🍎'},
+    {word:'SCHOOL', emoji:'🏫'},
+    {word:'ELEVEN', emoji:'🔟'},
+    {word:'FISH',   emoji:'🐟'},
+    {word:'TREE',   emoji:'🌳'},
+    {word:'BOOK',   emoji:'📚'},
+    {word:'STAR',   emoji:'⭐'},
+    {word:'HOUSE',  emoji:'🏠'}
+  ];
+  const DEFAULT_SETTINGS = { shuffle:true, tracingGuide:true, voiceURI:null, rate:0.9 };
+
+  const LS_WORDS    = 'spellingAdventure_words';
+  const LS_SETTINGS = 'spellingAdventure_settings';
+  const LS_STARS    = 'spellingAdventure_stars';
+
+  function safeParse(raw, fallback){
+    try{ const v = JSON.parse(raw); return v == null ? fallback : v; }
+    catch(e){ return fallback; }
+  }
+  function loadWordList(){
+    const raw = localStorage.getItem(LS_WORDS);
+    const list = raw ? safeParse(raw, null) : null;
+    return (Array.isArray(list) && list.length) ? list : DEFAULT_WORDS.slice();
+  }
+  function saveWordList(list){ localStorage.setItem(LS_WORDS, JSON.stringify(list)); }
+  function loadSettings(){
+    const raw = localStorage.getItem(LS_SETTINGS);
+    const s = raw ? safeParse(raw, {}) : {};
+    return Object.assign({}, DEFAULT_SETTINGS, s);
+  }
+  function saveSettings(s){ localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }
+  function loadStars(){ return parseInt(localStorage.getItem(LS_STARS) || '0', 10) || 0; }
+  function saveStars(n){ localStorage.setItem(LS_STARS, String(n)); }
+
+  /* ----------------------------------------------------------
+     2. APPLICATION STATE
+     ---------------------------------------------------------- */
+  let wordList   = loadWordList();
+  let settings   = loadSettings();
+  let stars      = loadStars();
+  let sessionWords = [];
+  let currentIndex = 0;
+  let letterBoxes  = [];   // [{wrap, guideCanvas, guideCtx, inkCanvas, inkCtx, hasInk, letter}]
+  let attemptsThisWord = 0;
+  let busyChecking = false;
+  let ocrReady = false;
+  let ocrWorker = null;
+
+  /* ----------------------------------------------------------
+     3. DOM SHORTCUTS
+     ---------------------------------------------------------- */
+  const $ = id => document.getElementById(id);
+  const welcomeScreen = $('welcomeScreen');
+  const gameScreen    = $('gameScreen');
+  const summaryScreen = $('summaryScreen');
+  const startBtn      = $('startBtn');
+  const ocrStatusWelcome = $('ocrStatusWelcome');
+  const progressLabel = $('progressLabel');
+  const progressFill  = $('progressFill');
+  const hintEmoji      = $('hintEmoji');
+  const speakBtn       = $('speakBtn');
+  const guideToggleBtn = $('guideToggleBtn');
+  const helperText     = $('helperText');
+  const lettersRow     = $('lettersRow');
+  const clearBtn       = $('clearBtn');
+  const checkBtn       = $('checkBtn');
+  const feedbackText   = $('feedbackText');
+  const revealBox      = $('revealBox');
+  const revealWord     = $('revealWord');
+  const skipBtn        = $('skipBtn');
+  const tryAgainBtn    = $('tryAgainBtn');
+  const nextRow        = $('nextRow');
+  const nextBtn        = $('nextBtn');
+  const starCountEl    = $('starCount');
+  const summaryTitle   = $('summaryTitle');
+  const summaryText    = $('summaryText');
+  const playAgainBtn   = $('playAgainBtn');
+
+  /* ----------------------------------------------------------
+     4. TEXT-TO-SPEECH  (Web Speech API)
+     ---------------------------------------------------------- */
+  let voices = [];
+  function refreshVoices(){
+    voices = ('speechSynthesis' in window) ? speechSynthesis.getVoices() : [];
+    populateVoiceSelect();
+  }
+  if ('speechSynthesis' in window){
+    speechSynthesis.onvoiceschanged = refreshVoices;
+    refreshVoices();
+  }
+  function speak(text){
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    const chosen = voices.find(v => v.voiceURI === settings.voiceURI);
+    if (chosen) utter.voice = chosen;
+    utter.rate = settings.rate || 0.9;
+    utter.pitch = 1.15;
+    speechSynthesis.speak(utter);
+  }
+
+  /* ----------------------------------------------------------
+     5. SOUND EFFECTS  (Web Audio API — no audio files needed)
+     ---------------------------------------------------------- */
+  let audioCtx = null;
+  function getAudioCtx(){
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function playTone(freqs, dur){
+    dur = dur || 0.16;
+    const ctx = getAudioCtx();
+    let t = ctx.currentTime;
+    freqs.forEach(f => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      t += dur * 0.85;
+    });
+  }
+  function playSuccessSound(){ playTone([523.25, 659.25, 783.99, 1046.50], 0.16); }
+  function playGentleRetrySound(){ playTone([392.00, 349.23], 0.20); }
+  function playSkipSound(){ playTone([440, 330], 0.15); }
+
+  /* ----------------------------------------------------------
+     6. CONFETTI  (tiny hand-rolled particle system)
+     ---------------------------------------------------------- */
+  const confettiCanvas = $('confettiCanvas');
+  const confettiCtx = confettiCanvas.getContext('2d');
+  function resizeConfettiCanvas(){
+    confettiCanvas.width = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeConfettiCanvas);
+  resizeConfettiCanvas();
+
+  let confettiParticles = [];
+  let confettiRAF = null;
+  const CONFETTI_COLORS = ['#ff6b6b','#ffd93d','#4fd68a','#63c7ff','#9b5de5','#ff9fd6'];
+
+  function burstConfetti(){
+    const originX = window.innerWidth / 2;
+    const count = 90;
+    for (let i = 0; i < count; i++){
+      confettiParticles.push({
+        x: originX + (Math.random()-0.5) * 120,
+        y: window.innerHeight * 0.25 + (Math.random()-0.5) * 40,
+        vx: (Math.random()-0.5) * 8,
+        vy: -(Math.random() * 9 + 4),
+        size: Math.random() * 7 + 5,
+        color: CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)],
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random()-0.5) * 0.3,
+        life: 0,
+        maxLife: 110 + Math.random() * 40
+      });
+    }
+    if (!confettiRAF) confettiRAF = requestAnimationFrame(stepConfetti);
+  }
+  function stepConfetti(){
+    confettiCtx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
+    confettiParticles.forEach(p => {
+      p.vy += 0.22; // gravity
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vrot;
+      p.life++;
+      const alpha = Math.max(0, 1 - p.life / p.maxLife);
+      confettiCtx.save();
+      confettiCtx.globalAlpha = alpha;
+      confettiCtx.translate(p.x, p.y);
+      confettiCtx.rotate(p.rot);
+      confettiCtx.fillStyle = p.color;
+      confettiCtx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.6);
+      confettiCtx.restore();
+    });
+    confettiParticles = confettiParticles.filter(p => p.life < p.maxLife);
+    if (confettiParticles.length){
+      confettiRAF = requestAnimationFrame(stepConfetti);
+    } else {
+      confettiRAF = null;
+    }
+  }
+
+  /* ----------------------------------------------------------
+     7. HANDWRITING CANVASES
+     Each letter gets TWO stacked canvases:
+       - guideCanvas: draws a faint "trace me" letter (visual only)
+       - inkCanvas:   fully transparent, this is what the child
+                      draws on and what gets sent to the OCR engine
+     ---------------------------------------------------------- */
+  function setupHiDPICanvas(canvas){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.max(1, Math.round(rect.width  * ratio));
+    canvas.height = Math.max(1, Math.round(rect.height * ratio));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    return ctx;
+  }
+
+  function drawGuideLetter(ctx, canvas, letter){
+    const ratio = window.devicePixelRatio || 1;
+    const w = canvas.width / ratio, h = canvas.height / ratio;
+    ctx.clearRect(0,0,w,h);
+    if (!settings.tracingGuide) return;
+    ctx.save();
+    ctx.font = `bold ${Math.floor(h*0.72)}px Arial, sans-serif`;
+    ctx.fillStyle = 'rgba(60,40,100,0.16)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(letter.toUpperCase(), w/2, h*0.56);
+    ctx.restore();
+  }
+
+  function makeLetterBox(letter){
+    const wrap = document.createElement('div');
+    wrap.className = 'letter-box-wrap';
+
+    const guideCanvas = document.createElement('canvas');
+    guideCanvas.className = 'guide-canvas';
+    const inkCanvas = document.createElement('canvas');
+    inkCanvas.className = 'ink-canvas';
+    const statusEl = document.createElement('div');
+    statusEl.className = 'letter-status';
+
+    wrap.appendChild(guideCanvas);
+    wrap.appendChild(inkCanvas);
+    wrap.appendChild(statusEl);
+    lettersRow.appendChild(wrap);
+
+    const guideCtx = setupHiDPICanvas(guideCanvas);
+    const inkCtx = setupHiDPICanvas(inkCanvas);
+    inkCtx.lineWidth = 9;
+    inkCtx.lineCap = 'round';
+    inkCtx.lineJoin = 'round';
+    inkCtx.strokeStyle = '#3a3358';
+
+    drawGuideLetter(guideCtx, guideCanvas, letter);
+
+    const box = { wrap, guideCanvas, guideCtx, inkCanvas, inkCtx, statusEl, hasInk:false, letter };
+
+    // Pointer events unify mouse, touch and stylus input.
+    let drawing = false;
+    let last = null;
+    function getPos(evt){
+      const r = inkCanvas.getBoundingClientRect();
+      return { x: evt.clientX - r.left, y: evt.clientY - r.top };
+    }
+    inkCanvas.addEventListener('pointerdown', evt => {
+      inkCanvas.setPointerCapture(evt.pointerId);
+      drawing = true;
+      last = getPos(evt);
+      box.hasInk = true;
+      wrap.classList.remove('empty-warn','correct','incorrect');
+      // a tiny dot so a single tap still registers as a mark
+      inkCtx.beginPath();
+      inkCtx.arc(last.x, last.y, inkCtx.lineWidth/2, 0, Math.PI*2);
+      inkCtx.fillStyle = inkCtx.strokeStyle;
+      inkCtx.fill();
+      evt.preventDefault();
+    });
+    inkCanvas.addEventListener('pointermove', evt => {
+      if (!drawing) return;
+      const p = getPos(evt);
+      inkCtx.beginPath();
+      inkCtx.moveTo(last.x, last.y);
+      inkCtx.lineTo(p.x, p.y);
+      inkCtx.stroke();
+      last = p;
+      evt.preventDefault();
+    });
+    function stop(){ drawing = false; }
+    inkCanvas.addEventListener('pointerup', stop);
+    inkCanvas.addEventListener('pointercancel', stop);
+    inkCanvas.addEventListener('pointerleave', stop);
+
+    return box;
+  }
+
+  function buildLetterBoxes(word){
+    lettersRow.innerHTML = '';
+    letterBoxes = [];
+    for (let i = 0; i < word.length; i++){
+      letterBoxes.push(makeLetterBox(word[i]));
+    }
+  }
+
+  function clearAllInk(){
+    letterBoxes.forEach(box => {
+      const ratio = window.devicePixelRatio || 1;
+      box.inkCtx.clearRect(0,0, box.inkCanvas.width/ratio, box.inkCanvas.height/ratio);
+      box.hasInk = false;
+      box.wrap.classList.remove('correct','incorrect','empty-warn');
+      box.statusEl.textContent = '';
+    });
+  }
+  function clearInkForBox(box){
+    const ratio = window.devicePixelRatio || 1;
+    box.inkCtx.clearRect(0,0, box.inkCanvas.width/ratio, box.inkCanvas.height/ratio);
+    box.hasInk = false;
+    box.wrap.classList.remove('correct','incorrect','empty-warn');
+    box.statusEl.textContent = '';
+  }
+
+  // Flatten a letter's ink layer onto a solid white background
+  // (Tesseract reads dark-on-light much better than dark-on-transparent).
+  function getFlattenedImage(box){
+    const off = document.createElement('canvas');
+    off.width = box.inkCanvas.width;
+    off.height = box.inkCanvas.height;
+    const octx = off.getContext('2d');
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0,0,off.width, off.height);
+    octx.drawImage(box.inkCanvas, 0, 0);
+    return off;
+  }
+
+  /* ----------------------------------------------------------
+     8. OCR ENGINE (Tesseract.js) — recognizes each handwritten letter
+     ---------------------------------------------------------- */
+  async function initOCR(){
+    try{
+      ocrWorker = await Tesseract.createWorker('eng');
+      await ocrWorker.setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        tessedit_pageseg_mode: '10' // PSM 10 = treat image as a single character
+      });
+      ocrReady = true;
+      ocrStatusWelcome.textContent = '✅ Handwriting helper is ready!';
+      startBtn.disabled = false;
+    }catch(err){
+      console.error('OCR init failed', err);
+      ocrStatusWelcome.textContent = '⚠️ Could not load the handwriting helper (check your internet connection). You can still write, but checking may not work.';
+      startBtn.disabled = false; // let them proceed anyway
+    }
+  }
+
+  function extractLetter(rawText){
+    const cleaned = (rawText || '').replace(/[^a-zA-Z]/g, '');
+    return cleaned.length ? cleaned[0].toUpperCase() : '';
+  }
+
+  // Recognizes every letter box, returns array of {correct:boolean, box}
+  async function recognizeWord(targetWord){
+    const results = [];
+    for (let i = 0; i < letterBoxes.length; i++){
+      const box = letterBoxes[i];
+      const targetLetter = targetWord[i].toUpperCase();
+      if (!ocrReady || !ocrWorker){
+        results.push({ box, correct: null }); // unknown — OCR unavailable
+        continue;
+      }
+      try{
+        const img = getFlattenedImage(box);
+        const { data } = await ocrWorker.recognize(img);
+        const recognized = extractLetter(data.text);
+        results.push({ box, correct: recognized === targetLetter, recognized });
+      }catch(err){
+        console.error('recognize error', err);
+        results.push({ box, correct: null });
+      }
+    }
+    return results;
+  }
+
+  /* ----------------------------------------------------------
+     9. GAME FLOW
+     ---------------------------------------------------------- */
+  const ENCOURAGE_GOOD = ['🌟 Fantastic spelling!', '🎉 You nailed it!', '💪 Amazing work!', '🥳 Perfect!', '✨ Super speller!'];
+  const ENCOURAGE_RETRY = ['So close — check the red letters! 💜', 'Almost there, try again! 🌈', 'Great try! Fix the red ones 💫', "You're getting closer! 🚀"];
+
+  function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function shuffleArray(arr){
+    const a = arr.slice();
+    for (let i = a.length -1; i>0; i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [a[i],a[j]] = [a[j],a[i]];
+    }
+    return a;
+  }
+
+  function startSession(){
+    sessionWords = settings.shuffle ? shuffleArray(wordList) : wordList.slice();
+    currentIndex = 0;
+    welcomeScreen.style.display = 'none';
+    summaryScreen.style.display = 'none';
+    gameScreen.style.display = 'block';
+    renderRound();
+  }
+
+  function updateStarDisplay(){ starCountEl.textContent = String(stars); }
+
+  function updateGuideToggleLabel(){
+    guideToggleBtn.textContent = settings.tracingGuide ? '👻 Tracing: On' : '👻 Tracing: Off';
+    guideToggleBtn.classList.toggle('off', !settings.tracingGuide);
+    helperText.textContent = settings.tracingGuide
+      ? 'Trace the faint letter in each box ✍️'
+      : 'Write each letter all by yourself! ✍️';
+  }
+
+  function renderRound(){
+    attemptsThisWord = 0;
+    const item = sessionWords[currentIndex];
+    progressLabel.textContent = `Word ${currentIndex+1} of ${sessionWords.length}`;
+    progressFill.style.width = `${Math.round((currentIndex)/sessionWords.length*100)}%`;
+    hintEmoji.textContent = item.emoji || '❓';
+    updateGuideToggleLabel();
+    buildLetterBoxes(item.word);
+    feedbackText.textContent = '';
+    feedbackText.className = 'feedback neutral';
+    revealBox.style.display = 'none';
+    nextRow.style.display = 'none';
+    checkBtn.disabled = false;
+    checkBtn.style.display = 'inline-flex';
+    clearBtn.style.display = 'inline-flex';
+    setTimeout(() => speak(item.word), 350);
+  }
+
+  function goToNextWord(){
+    currentIndex++;
+    if (currentIndex >= sessionWords.length){
+      showSummary();
+    } else {
+      renderRound();
+    }
+  }
+
+  function showSummary(){
+    gameScreen.style.display = 'none';
+    summaryScreen.style.display = 'block';
+    progressFill.style.width = '100%';
+    summaryText.textContent = `You practiced ${sessionWords.length} words and earned ⭐ ${stars} stars total. Keep up the great spelling!`;
+    burstConfetti();
+  }
+
+  async function handleCheck(){
+    if (busyChecking) return;
+    const item = sessionWords[currentIndex];
+    const allFilled = letterBoxes.every(b => b.hasInk);
+    if (!allFilled){
+      letterBoxes.forEach(b => { if (!b.hasInk) b.wrap.classList.add('empty-warn'); });
+      feedbackText.textContent = "Don't forget — write in every box! ✏️";
+      feedbackText.className = 'feedback bad';
+      return;
+    }
+
+    busyChecking = true;
+    checkBtn.disabled = true;
+    feedbackText.textContent = '🔍 Reading your handwriting…';
+    feedbackText.className = 'feedback neutral';
+
+    const results = await recognizeWord(item.word);
+    let allCorrect = true;
+    results.forEach(r => {
+      if (r.correct === false){
+        allCorrect = false;
+        r.box.wrap.classList.add('incorrect');
+        r.box.statusEl.textContent = '❌';
+      } else if (r.correct === true){
+        r.box.wrap.classList.remove('incorrect');
+        r.box.wrap.classList.add('correct');
+        r.box.statusEl.textContent = '✅';
+      } else {
+        // OCR unavailable — treat generously so the child can still progress
+        r.box.statusEl.textContent = '';
+      }
+    });
+
+    busyChecking = false;
+
+    if (allCorrect){
+      stars++;
+      saveStars(stars);
+      updateStarDisplay();
+      playSuccessSound();
+      burstConfetti();
+      feedbackText.textContent = pickRandom(ENCOURAGE_GOOD);
+      feedbackText.className = 'feedback good';
+      checkBtn.style.display = 'none';
+      clearBtn.style.display = 'none';
+      nextRow.style.display = 'flex';
+    } else {
+      attemptsThisWord++;
+      playGentleRetrySound();
+      feedbackText.textContent = pickRandom(ENCOURAGE_RETRY);
+      feedbackText.className = 'feedback bad';
+      checkBtn.disabled = false;
+      // Let the child re-draw only the letters that were wrong.
+      results.forEach(r => { if (r.correct === false) clearInkForBoxKeepMark(r.box); });
+
+      if (attemptsThisWord >= 3){
+        revealBox.style.display = 'block';
+        revealWord.textContent = item.word.split('').join(' ');
+      }
+    }
+  }
+
+  // Clears ink for a retry but keeps the red highlight briefly visible
+  function clearInkForBoxKeepMark(box){
+    setTimeout(() => {
+      const ratio = window.devicePixelRatio || 1;
+      box.inkCtx.clearRect(0,0, box.inkCanvas.width/ratio, box.inkCanvas.height/ratio);
+      box.hasInk = false;
+      box.statusEl.textContent = '';
+    }, 700);
+  }
+
+  /* ----------------------------------------------------------
+     10. EVENT WIRING — game screen
+     ---------------------------------------------------------- */
+  startBtn.addEventListener('click', () => { getAudioCtx(); startSession(); });
+  speakBtn.addEventListener('click', () => speak(sessionWords[currentIndex].word));
+  guideToggleBtn.addEventListener('click', () => {
+    settings.tracingGuide = !settings.tracingGuide;
+    saveSettings(settings);
+    updateGuideToggleLabel();
+    letterBoxes.forEach(b => drawGuideLetter(b.guideCtx, b.guideCanvas, b.letter));
+  });
+  clearBtn.addEventListener('click', clearAllInk);
+  checkBtn.addEventListener('click', handleCheck);
+  nextBtn.addEventListener('click', goToNextWord);
+  skipBtn.addEventListener('click', () => { playSkipSound(); goToNextWord(); });
+  tryAgainBtn.addEventListener('click', () => {
+    revealBox.style.display = 'none';
+    attemptsThisWord = 0;
+    clearAllInk();
+    feedbackText.textContent = 'You can do it! ✨';
+    feedbackText.className = 'feedback neutral';
+  });
+  playAgainBtn.addEventListener('click', startSession);
+
+  window.addEventListener('resize', () => {
+    // Re-fit letter canvases (keeps drawing crisp on rotate/resize)
+    if (gameScreen.style.display === 'block'){
+      const item = sessionWords[currentIndex];
+      buildLetterBoxes(item.word);
+    }
+  });
+
+  /* ----------------------------------------------------------
+     11. PARENT / TEACHER SETTINGS MODAL
+     ---------------------------------------------------------- */
+  const modalOverlay = $('modalOverlay');
+  const gateSection = $('gateSection');
+  const settingsSection = $('settingsSection');
+  const gateQuestion = $('gateQuestion');
+  const gateAnswer = $('gateAnswer');
+  const wordListEditor = $('wordListEditor');
+  const shuffleToggle = $('shuffleToggle');
+  const guideDefaultToggle = $('guideDefaultToggle');
+  const voiceSelect = $('voiceSelect');
+  const rateRange = $('rateRange');
+
+  let gateSum = 0;
+  function newGateQuestion(){
+    const a = 2 + Math.floor(Math.random()*7);
+    const b = 2 + Math.floor(Math.random()*7);
+    gateSum = a + b;
+    gateQuestion.textContent = `What is ${a} + ${b} ?`;
+    gateAnswer.value = '';
+  }
+
+  function openModal(){
+    modalOverlay.classList.add('show');
+    gateSection.style.display = 'block';
+    settingsSection.style.display = 'none';
+    newGateQuestion();
+  }
+  function closeModal(){ modalOverlay.classList.remove('show'); }
+
+  $('openSettingsBtn').addEventListener('click', openModal);
+  $('gateCancelBtn').addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', evt => { if (evt.target === modalOverlay) closeModal(); });
+
+  $('gateUnlockBtn').addEventListener('click', () => {
+    if (parseInt(gateAnswer.value, 10) === gateSum){
+      gateSection.style.display = 'none';
+      settingsSection.style.display = 'block';
+      loadSettingsIntoForm();
+    } else {
+      newGateQuestion();
+      gateQuestion.style.color = '#e0525a';
+      setTimeout(()=> gateQuestion.style.color = '', 900);
+    }
+  });
+
+  function populateVoiceSelect(){
+    voiceSelect.innerHTML = '';
+    const englishVoices = voices.filter(v => /en/i.test(v.lang));
+    const list = englishVoices.length ? englishVoices : voices;
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Default voice';
+    voiceSelect.appendChild(defaultOpt);
+    list.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.voiceURI;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+    voiceSelect.value = settings.voiceURI || '';
+  }
+
+  function renderWordRow(entry){
+    const row = document.createElement('div');
+    row.className = 'word-row';
+    row.innerHTML = `
+      <input class="emoji-input" maxlength="4" value="${entry.emoji || ''}" placeholder="🙂" />
+      <input class="word-input" value="${entry.word || ''}" placeholder="WORD" />
+      <button class="del-btn" title="Delete word">🗑</button>
+    `;
+    row.querySelector('.del-btn').addEventListener('click', () => row.remove());
+    wordListEditor.appendChild(row);
+  }
+
+  function loadSettingsIntoForm(){
+    wordListEditor.innerHTML = '';
+    wordList.forEach(renderWordRow);
+    shuffleToggle.checked = !!settings.shuffle;
+    guideDefaultToggle.checked = !!settings.tracingGuide;
+    rateRange.value = settings.rate || 0.9;
+    populateVoiceSelect();
+  }
+
+  $('addWordBtn').addEventListener('click', () => renderWordRow({word:'', emoji:''}));
+  $('resetWordsLink').addEventListener('click', () => {
+    wordListEditor.innerHTML = '';
+    DEFAULT_WORDS.forEach(renderWordRow);
+  });
+
+  $('settingsCancelBtn').addEventListener('click', closeModal);
+  $('settingsSaveBtn').addEventListener('click', () => {
+    // Collect word list rows
+    const rows = wordListEditor.querySelectorAll('.word-row');
+    const newList = [];
+    rows.forEach(row => {
+      const word = row.querySelector('.word-input').value.trim().toUpperCase();
+      const emoji = row.querySelector('.emoji-input').value.trim();
+      if (word) newList.push({ word, emoji });
+    });
+    wordList = newList.length ? newList : DEFAULT_WORDS.slice();
+    saveWordList(wordList);
+
+    settings.shuffle = shuffleToggle.checked;
+    settings.tracingGuide = guideDefaultToggle.checked;
+    settings.voiceURI = voiceSelect.value || null;
+    settings.rate = parseFloat(rateRange.value) || 0.9;
+    saveSettings(settings);
+
+    closeModal();
+
+    // If a game is in progress, restart the session with fresh settings/words
+    if (gameScreen.style.display === 'block'){
+      startSession();
+    }
+  });
+
+  /* ----------------------------------------------------------
+     12. PWA: "Install App" support
+     ---------------------------------------------------------- */
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed', err));
+    });
+  }
+
+  const installBtn = $('installBtn');
+  const iosInstallHint = $('iosInstallHint');
+  let deferredInstallPrompt = null;
+
+  // Chrome / Edge / Android fire this event when the app is installable.
+  window.addEventListener('beforeinstallprompt', (evt) => {
+    evt.preventDefault();
+    deferredInstallPrompt = evt;
+    installBtn.style.display = 'inline-flex';
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtn.style.display = 'none';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    installBtn.style.display = 'none';
+    iosInstallHint.style.display = 'none';
+  });
+
+  // iOS Safari has no install prompt API — show manual instructions instead,
+  // but only if it isn't already running as an installed app.
+  function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+  function isInStandaloneMode(){ return ('standalone' in window.navigator) && window.navigator.standalone; }
+  if (isIOS() && !isInStandaloneMode()){
+    iosInstallHint.style.display = 'block';
+  }
+
+  /* ----------------------------------------------------------
+     13. BOOT
+     ---------------------------------------------------------- */
+  updateStarDisplay();
+  initOCR();
+
+})();
+</script>
+</body>
+</html>
